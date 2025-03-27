@@ -15,11 +15,10 @@ router.post("/register", async (req, res) => {
     return res.status(400).json({ error: "Email and password are required." });
   }
 
-  let avatarUrl = null; // Initialize to null
+  let avatarUrl = null;
   let avatar = req.files?.avatar;
 
   try {
-    // Create user in Supabase authentication
     const { data, error } = await supabase.auth.admin.createUser({
       email,
       password,
@@ -33,7 +32,6 @@ router.post("/register", async (req, res) => {
       const fileExt = avatar.mimetype.split("/")[1];
       const filePath = `avatars/${data.user.id}/avatar.${fileExt}`;
 
-      // Upload the avatar
       const { error: avatarError } = await supabase.storage
         .from("avatars")
         .upload(filePath, avatar.data, { contentType: avatar.mimetype });
@@ -42,7 +40,6 @@ router.post("/register", async (req, res) => {
         return res.status(400).json({ error: avatarError.message });
       }
 
-      // Get public URL correctly using the Supabase docs' approach
       const { data: publicUrlData } = supabase.storage
         .from("avatars")
         .getPublicUrl(filePath);
@@ -50,13 +47,12 @@ router.post("/register", async (req, res) => {
       avatarUrl = publicUrlData.publicUrl;
     }
 
-    // Insert profile into the database
     const { error: profileError } = await supabase.from("profiles").insert({
       id: data.user.id,
       name,
       email,
       caps: 500,
-      avatar_url: avatarUrl, // Correctly assigned
+      avatar_url: avatarUrl,
     });
 
     if (profileError) {
@@ -92,6 +88,33 @@ router.post("/login", async(req, res) => {
   } catch {
     res.status(500).json({ error: "Internal server error"});
   }
-})
+});
+
+router.post("/refresh", async (req, res) => {
+  const { refresh_token } = req.body;
+
+  if (!refresh_token) {
+      return res.status(400).json({ error: "Missing refresh token" });
+  }
+
+  try {
+      const { data, error } = await supabase.auth.refreshSession({
+          refresh_token
+      });
+
+      if (error) {
+          return res.status(401).json({ error: "Invalid refresh token" });
+      }
+
+      res.json({
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token, // Provide a new refresh token too
+          expires_in: data.session.expires_in
+      });
+  } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 export default router;
